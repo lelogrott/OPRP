@@ -1,8 +1,8 @@
-#include<sys/time.h>
-#include<time.h>
-#include<stdlib.h>
-#include<stdio.h>
-#include<pthread.h>
+#include <sys/time.h>
+#include <time.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <pthread.h>
 #include <unistd.h>
 
 typedef struct {

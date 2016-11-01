@@ -1,10 +1,11 @@
-#include<sys/time.h>
-#include<time.h>
-#include<stdlib.h>
-#include<stdio.h>
-#include<pthread.h>
-#include<unistd.h>
-#include<mpi.h>
+#include <sys/time.h>
+#include <time.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <pthread.h>
+#include <unistd.h>
+#include <mpi.h>
+#include <string.h>
 
 #define MASTER 0
 #define MSG_TAG 0
@@ -21,6 +22,9 @@ typedef struct {
 	int linha_selecionada;
 	double pivo_selecionado;
 	int *flag;
+	int size;
+	int rank;
+	double *vet_linha_selecionada;
 } param_t;
 
 
@@ -29,7 +33,7 @@ void mostra_submatriz(double **matriz, int rank, int size);
 int getColuna(int tid, int ntasks, double **simplex, int *coluna_alvo, double *menor);
 int getLinha(int tid, int ntasks, double **simplex, int *linha_alvo, int coluna_selecionada, double *menor, double *pivo);
 int divide_linha(int tid, int ntasks, double **simplex, int linha_selecionada, double pivo_selecionado);
-int zera_coluna(double **simplex, int linha_selecionada, int coluna_selecionada, int size);
+int zera_coluna(int tid, int ntasks, double **simplex, int linha_selecionada, int coluna_selecionada, int size, int rank, double *vet_linha_selecionada);
 int verifica_negativos(int tid, int ntasks, double **simplex, int *flag);
 
 
@@ -57,6 +61,12 @@ void *simplex_verifica_negativo(void *arg)
 {
    param_t *p = (param_t *) arg;
    verifica_negativos(p->tid, p->ntasks, p->simplex, p->flag);
+}
+
+void *simplex_zera_coluna(void *arg)
+{
+   param_t *p = (param_t *) arg;
+   zera_coluna(p->tid, p->ntasks, p->simplex, p->linha_selecionada, p->coluna_selecionada, p->size, p->rank, p->vet_linha_selecionada);
 }
 
 int N_THREADS;
@@ -129,12 +139,11 @@ int main(int argc, char* argv[])
 	{
 		MPI_Recv(&nLinhas, 1, MPI_INT, 0, MSG_TAG, MPI_COMM_WORLD, &status);
 		MPI_Recv(&nColunas, 1, MPI_INT, 0, MSG_TAG, MPI_COMM_WORLD, &status);	
-		printf("processo %d recebeu nlinhas = %d e ncolunas = %d\n\n", rank, nLinhas, nColunas);
 		
 		data = (double*) malloc (sizeof(double) * (nLinhas/(size))*nColunas);
 		cars = (double**) malloc (sizeof(double*) * (nLinhas/(size)));
 		vet_linha_selecionada = (double*) malloc (sizeof(double) * nColunas);
-		
+			
 		for (i = 0; i < (nLinhas/(size)); i++) 
 		{
 			cars[i] = &data[nColunas * i];
@@ -157,8 +166,6 @@ int main(int argc, char* argv[])
 	
 	while( flag!=0 )
 	{
-		printf(">> process %d started main loop\n", rank);
-
 		if(rank == MASTER)
 		{
 			/** INICIA PARTE 1 - GET COLUNA**/	
@@ -254,86 +261,70 @@ int main(int argc, char* argv[])
 		
 		MPI_Scatter(&cars[0][0], (nLinhas/(size))*nColunas, MPI_DOUBLE, &cars[0][0], (nLinhas/(size))*nColunas, MPI_DOUBLE, MASTER, MPI_COMM_WORLD);
 		
-		if(rank == MASTER)
-		{
-			printf(">> Inicializando parte 4\n\n");
-			cars[5][5] = 666;			
-			mostraMatriz(cars);
-		}
-		sleep(10);
-		
-		if( rank == MASTER)
-			mostra_submatriz(cars, rank, size);
-		MPI_Barrier(MPI_COMM_WORLD);
-				
-		if( rank == 1)
-			mostra_submatriz(cars, rank, size);
-		MPI_Barrier(MPI_COMM_WORLD);
-		
-		if( rank == 2)
-			mostra_submatriz(cars, rank, size);
-		MPI_Barrier(MPI_COMM_WORLD);
-		
-		if( rank == 3)
-			mostra_submatriz(cars, rank, size);
-		MPI_Barrier(MPI_COMM_WORLD);
-		sleep(10);
 		
 		if(rank == MASTER)
 		{
+			N_THREADS = atoi(argv[2]);// nthreads para parte distribuida
+			memcpy(vet_linha_selecionada, cars[linha_selecionada], sizeof(double)*nColunas);
 			for(i=1; i < size; i++)
 			{
 				MPI_Send(&linha_selecionada, 1, MPI_INT, i, MSG_TAG, MPI_COMM_WORLD);
 				MPI_Send(&coluna_selecionada, 1, MPI_INT, i, MSG_TAG, MPI_COMM_WORLD);
+				MPI_Send(vet_linha_selecionada, nColunas, MPI_DOUBLE, i, MSG_TAG, MPI_COMM_WORLD);
+				
+				MPI_Send(&N_THREADS, 1, MPI_INT, i, MSG_TAG, MPI_COMM_WORLD);
 			}
 		}
 		
 		if(rank != MASTER)
 		{
-			printf(">>>> %d\n", rank);
-			
+						
 			MPI_Status status;
 			
 			MPI_Recv(&linha_selecionada, 1, MPI_INT, 0, MSG_TAG, MPI_COMM_WORLD, &status);
 			MPI_Recv(&coluna_selecionada, 1, MPI_INT, 0, MSG_TAG, MPI_COMM_WORLD, &status);
+			MPI_Recv(vet_linha_selecionada, nColunas, MPI_DOUBLE, 0, MSG_TAG, MPI_COMM_WORLD, &status);
+			
+			MPI_Recv(&N_THREADS, 1, MPI_INT, 0, MSG_TAG, MPI_COMM_WORLD, &status);
 		}
-		printf("@@ zerando: %d %d %d \n\n", rank, linha_selecionada, coluna_selecionada);	
-		zera_coluna(cars, linha_selecionada, coluna_selecionada, size);
-		MPI_Barrier(MPI_COMM_WORLD);
-		if( rank == MASTER)
-			mostra_submatriz(cars, rank, size);
-		MPI_Barrier(MPI_COMM_WORLD);
-				
-		if( rank == 1)
-			mostra_submatriz(cars, rank, size);
-		MPI_Barrier(MPI_COMM_WORLD);
 		
-		if( rank == 2)
-			mostra_submatriz(cars, rank, size);
-		MPI_Barrier(MPI_COMM_WORLD);
+		pthread_t *threads_pt_quatro;
+		param_t *args_pt_quatro;
 		
-		if( rank == 3)
-			mostra_submatriz(cars, rank, size);
-		MPI_Barrier(MPI_COMM_WORLD);
-		sleep(10);
+		threads_pt_quatro = (pthread_t *) malloc(N_THREADS * sizeof(pthread_t));
+		args_pt_quatro = (param_t *) malloc(N_THREADS * sizeof(param_t));
+		
+		for (i = 0; i < N_THREADS; i++)
+		{
+			args_pt_quatro[i].tid = i;
+			args_pt_quatro[i].ntasks = N_THREADS;
+			args_pt_quatro[i].simplex = cars;
+			args_pt_quatro[i].linha_selecionada = linha_selecionada;
+			args_pt_quatro[i].coluna_selecionada = coluna_selecionada;
+			args_pt_quatro[i].size = size;
+			args_pt_quatro[i].rank = rank;
+			args_pt_quatro[i].vet_linha_selecionada = vet_linha_selecionada;
+			pthread_create(&threads_pt_quatro[i], NULL, simplex_zera_coluna, (void *) (args_pt_quatro+i));
+		}
+
+		for (i = 0; i < N_THREADS; i++)
+		{
+		  pthread_join(threads_pt_quatro[i], NULL);
+		}
 		
 		
+		//zera_coluna(cars, linha_selecionada, coluna_selecionada, size, rank, vet_linha_selecionada);
+		
+
 		/** FINALIZA PARTE 4 - ZERA COLUNA **/
-		MPI_Barrier(MPI_COMM_WORLD);
+		
 		MPI_Gather(&cars[0][0], (nLinhas/(size))*nColunas, MPI_DOUBLE, &cars[0][0], (nLinhas/(size))*nColunas, MPI_DOUBLE, 0, MPI_COMM_WORLD);
-		MPI_Barrier(MPI_COMM_WORLD);	
+		
+		
 		
 		if(rank == MASTER)
 		{
-			printf(">> Finalizando parte 4\n\n");
-			cars[5][5] = 666;			
-			mostraMatriz(cars);
-		}
-		MPI_Barrier(MPI_COMM_WORLD);
-		sleep(10);
-		if(rank == MASTER)
-		{
-			mostraMatriz(cars);
+			N_THREADS = atoi(argv[1]); // voltando para numero de tasks do mestre
 			flag =0;
 			/** INICIA PARTE 5 - VERIFICA NEGATIVOS **/
 	
@@ -361,22 +352,22 @@ int main(int argc, char* argv[])
 		{
 			MPI_Recv(&flag_to_niggas, 1, MPI_INT, 0, MSG_TAG, MPI_COMM_WORLD, &status);
 			if(!flag_to_niggas)
-				goto fim;
+				break;
 		}
 	}
 	
-	fim:
-	
-	
+		
 	free(threads);
 	free(args);
 	
 	gettimeofday(&timevalB,NULL);
+	
+	if(rank == MASTER)
+	{
+		printf("\nresultado: %lf\ntempo de execucao: %lf\n", cars[nLinhas-1][nColunas-1], timevalB.tv_sec-timevalA.tv_sec+(timevalB.tv_usec-timevalA.tv_usec)/(double)1000000);
+		//mostraMatriz(cars);
+	}
 
-	//mostraMatriz(cars);
-	//printf("\nresultado: %lf\ntempo de execucao: %lf\n", cars[nLinhas-1][nColunas-1], timevalB.tv_sec-timevalA.tv_sec+(timevalB.tv_usec-timevalA.tv_usec)/(double)1000000);
-
-	printf(">> rank: %d\n\n", rank);	
 	MPI_Finalize();	
 	return 0;
 }
@@ -442,22 +433,33 @@ int divide_linha(int tid, int ntasks, double **simplex, int linha_selecionada, d
 	return 0;
  }
 
-int zera_coluna(double **simplex, int linha_selecionada, int coluna_selecionada, 
-				double *vet_linha_selecionada, int size)
+int zera_coluna(int tid, int ntasks, double **simplex, int linha_selecionada, int coluna_selecionada, 
+				int size, int rank, double *vet_linha_selecionada)
 {
     double coefi;
-    int i,j;
+    int i,j,limite, process=0;
 
-    for(i = 0 ;i < (nLinhas/(size));++i)
+	process = (int) linha_selecionada/(nLinhas/size);
+    
+    if(tid == ntasks- 1)
+    	limite = (nLinhas/(size));
+    else
+    	limite = tid*((nLinhas/(size))/ntasks) + (nLinhas/(size))/ntasks;
+    
+    
+    for(i = tid*((nLinhas/(size))/ntasks);i < limite;++i)
     { 
-    	if(simplex[i][coluna_selecionada] != 0 && i != linha_selecionada)
+    	if(simplex[i][coluna_selecionada] != 0)
     	{
-    		coefi = -1 * simplex[i][coluna_selecionada];  	
-	    	
-	    	for(j = 0 ;j < nColunas ;++j) 
-	    	{
-	    		simplex[i][j] = vet_linha_selecionada[j]* coefi + simplex[i][j];
-	    	}	
+    		if ((rank == process && ( i != linha_selecionada - rank*(nLinhas/size))) || rank != process)
+    		{    			
+				coefi = -1 * simplex[i][coluna_selecionada];  	
+		    	
+		    	for(j = 0 ;j < nColunas ;++j) 
+		    	{
+		    		simplex[i][j] = vet_linha_selecionada[j]* coefi + simplex[i][j];
+		    	}
+		    }	
     	}	
     }
     return 0;
