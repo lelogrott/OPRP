@@ -247,7 +247,7 @@ int main(int argc, char* argv[])
 	//mostraMatriz(cars);
 	printf("\nresultado: %lf\ntempo de execucao: %lf\n", cars[nLinhas-1][nColunas-1], timevalB.tv_sec-timevalA.tv_sec+(timevalB.tv_usec-timevalA.tv_usec)/(double)1000000);
 
-	
+	//mostraMatriz(cars);
 	
 	return 0;
 }
