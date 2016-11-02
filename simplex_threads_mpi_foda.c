@@ -436,6 +436,7 @@ int divide_linha(int tid, int ntasks, double **simplex, int linha_selecionada, d
 int zera_coluna(int tid, int ntasks, double **simplex, int linha_selecionada, int coluna_selecionada, 
 				int size, int rank, double *vet_linha_selecionada)
 {
+	//printf(">> thread %d do processo %d \n\n", tid, rank);
     double coefi;
     int i,j,limite, process=0;
 
