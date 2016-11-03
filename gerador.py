@@ -2,8 +2,8 @@ import random
 import numpy as np
 
 a=[]
-NLINHAS=3999
-NCOLUNAS=5000
+NLINHAS=999
+NCOLUNAS=500
 print "%i %i"%(NLINHAS+1, NCOLUNAS + NLINHAS +1)
 for i in range(0,NLINHAS):
 	a.append(random.sample(range(0,NCOLUNAS+1), NCOLUNAS))
