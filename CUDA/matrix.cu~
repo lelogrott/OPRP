@@ -40,6 +40,13 @@ int main()
 		c[i] = 0;
 	}
 	
+	for( int i = 0; i < N * N; i++)
+	{
+		printf("%d %d %d ", a[i], b[i], c[i]);
+		if(i%N==0)
+			printf("\n");
+	}
+	printf("\n");
 	
 	cudaMemcpy( d_a, a, N * size, cudaMemcpyHostToDevice );
 	cudaMemcpy( d_b, b, N * size, cudaMemcpyHostToDevice );
