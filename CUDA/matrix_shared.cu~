@@ -60,7 +60,7 @@ int main()
 	cudaMemcpy( d_c, c, N * size, cudaMemcpyHostToDevice );
 	
 	dim3 blocos = dim3((N + (THREADS_PER_BLOCK -1)) / THREADS_PER_BLOCK, (N + (THREADS_PER_BLOCK - 1)) / THREADS_PER_BLOCK, 1);
-	dim3 t = dim3(32,32);
+	dim3 t = dim3(128,128);
 
 	vector_add<<< blocos,t >>>(d_a, d_b, d_c);
 
