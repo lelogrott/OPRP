@@ -1,8 +1,8 @@
 #include <stdio.h>
 
-#define N 128
-#define THREADS_PER_BLOCK 32*32
-#define TILE_DIM 32
+#define N 32
+#define THREADS_PER_BLOCK 16*16
+#define TILE_DIM 16
 
 __global__ void vector_add(int* A, int* B, int* C) {
 
@@ -10,28 +10,34 @@ __global__ void vector_add(int* A, int* B, int* C) {
 
     int linha = blockIdx.y * TILE_DIM + threadIdx.y;
     int coluna = blockIdx.x * TILE_DIM + threadIdx.x;
+	//printf(">> %d %d\n", linha, coluna);
+    __shared__ int As[TILE_DIM][TILE_DIM];
+    __shared__ int Bs[TILE_DIM][TILE_DIM];
 
-    __shared__ int As[TILE_DIM * TILE_DIM];
-    __shared__ int Bs[TILE_DIM * TILE_DIM];
+    for (int k = 0; k < (N*N)/(TILE_DIM*TILE_DIM); k++)
+    {
+     
+       	As[threadIdx.y][threadIdx.x] = A[linha*N + coluna];
+       	Bs[threadIdx.y][threadIdx.x] = B[linha*N + coluna];
 
-    for (int k = 0; k < (TILE_DIM + N - 1)/TILE_DIM; k++) {
+        __syncthreads();
 
-         if (k*TILE_DIM + threadIdx.x < N && linha < N)   
-         	As[threadIdx.y * TILE_DIM + threadIdx.x] = A[linha*N + k*TILE_DIM + threadIdx.x];
+        for (int i = 0; i < TILE_DIM; ++i) 
+        	valor_c += As[i][threadIdx.x] * Bs[threadIdx.y][i];
 
-         if (k*TILE_DIM + threadIdx.y < N && coluna < N) 
-         	Bs[threadIdx.y * TILE_DIM + threadIdx.x] = B[(k*TILE_DIM + threadIdx.y)*N + coluna];
-
-         __syncthreads();
-
-         for (int i = 0; i < TILE_DIM; ++i) 
-         	valor_c += As[threadIdx.y * TILE_DIM + i] * Bs[threadIdx.x * TILE_DIM + i];
-
-         __syncthreads();
+        __syncthreads();
     }
 
-    if (linha < N && coluna < N) 
-    	C[((blockIdx.y * TILE_DIM + threadIdx.y * TILE_DIM)) + (blockIdx.x * TILE_DIM) + threadIdx.x] = valor_c;
+    if (linha < N && coluna < N)
+    { 
+/*    	C[linha*N + coluna] = valor_c;
+    	if(linha*N + coluna == 1023 || linha*N + coluna == 0)
+    		printf("valor = %d\nposicao = %d\n", valor_c, linha*N + coluna);
+*/
+	   	C[1023] = 500;
+
+    }
+
 }
 
 int main()
@@ -50,7 +56,7 @@ int main()
 
 	for( int i = 0; i < N * N; i++)
 	{
-		a[i] = b[i] = i;
+		a[i] = b[i] = 1;
 		c[i] = 0;
 	}
 	
@@ -59,8 +65,8 @@ int main()
 	cudaMemcpy( d_b, b, N * size, cudaMemcpyHostToDevice );
 	cudaMemcpy( d_c, c, N * size, cudaMemcpyHostToDevice );
 	
-	dim3 blocos = dim3((N + (THREADS_PER_BLOCK -1)) / THREADS_PER_BLOCK, (N + (THREADS_PER_BLOCK - 1)) / THREADS_PER_BLOCK, 1);
-	dim3 t = dim3(32,32);
+	dim3 blocos = dim3((N*N)/THREADS_PER_BLOCK, (N*N)/THREADS_PER_BLOCK, 1);
+	dim3 t = dim3(16,16);
 
 	vector_add<<< blocos,t >>>(d_a, d_b, d_c);
 
@@ -68,7 +74,8 @@ int main()
 
 	printf("c[0] = %d\n",c[0]);
 	printf("c[%d] = %d\n", N*N-1, c[N*N-1]);
-
+	printf("size = %d\n",size);
+	
 	free(a);
 	free(b);
 	free(c);
